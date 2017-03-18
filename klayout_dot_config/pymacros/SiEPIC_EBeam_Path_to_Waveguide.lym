@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <klayout-macro>
- <description>SiEPIC: 1-Path to Waveguide</description>
+ <description>Path to Waveguide</description>
  <version/>
  <category>pymacros</category>
  <prolog/>
@@ -11,7 +11,7 @@
  <shortcut>W</shortcut>
  <show-in-menu>true</show-in-menu>
  <group-name/>
- <menu-path>siepic_menu.end</menu-path>
+ <menu-path>siepic_menu.waveguides_submenu.begin</menu-path>
  <interpreter>python</interpreter>
  <dsl-interpreter-name/>
  <text># Python script
@@ -51,11 +51,30 @@ Lukas Chrostowski           2015/12/04
 Lukas Chrostowski           2015/12/9
  - .index() is a list method; replaced Optical_*.idx with .idx
  - Convert all Si paths to waveguides if nothing is selected.
- 
+
+Lukas Chrostowski           2016/04/10
+ - Snap waveguide only to pins with the same orientation; fixes.
+
+Jaspreet &amp; Lukas            2016/04/22
+ - warning if one path segment has insufficient length to accommodate the bend radius
+
+Jaspreet Jhoja              2016/04/26
+- warning if first and last segments are not manhattan
+
+Lukas Chrostowski           2017/02/14
+- Fix for incorrect warning issued for a straight segment waveguide containing coincident points
+- remove the addition of 2 coincident vertices in a straight segment waveguide 
+  (coincident points not allowed in GDS)
+- improvement for 2 vertex path (segment): 
+   1) if the two pins are Manhattan, make a straight waveguide.
+   2) if the two pins are not Manhattan, insert 2 extra vertices in the middle, 
+      and then proceed to snap both ends with two 90º bends.
+
+
 """
 
 import pya
-
+from math import *
 
 
 # Configure variables to draw structures in the presently selected cell:
@@ -91,8 +110,6 @@ optical_nets = []
 reset_Optical_classes()
 
 
-# Record a transaction, to enable "undo"
-lv.transaction("Path to Waveguide")
 
 
 # Waveguide type is specified using a "User Properties" defined via the Cells window.
@@ -103,13 +120,20 @@ if Waveguide_Type and Waveguide_Type in Waveguide_Types:
 else:
   Waveguide_Type = pya.InputDialog.ask_item("Waveguide Type", "Choose the type of waveguide to use.  \nThe value will be saved as a user property in cell {%s}." % cell.name, Waveguide_Types, 0)
   print("Waveguide type taken from the InputDialog = %s; for next time, saved in cell {%s}." % (Waveguide_Type, cell.name) )
-  cell.set_property("Waveguide_Type", Waveguide_Type)
+  # Record a transaction, to enable "undo"
+  if Waveguide_Type == None:
+    Waveguide_Type = Waveguide_Types[0]
+  else:
+    lv.transaction("Path to Waveguide: waveguide type selection")
+    print("Waveguide Type taken from the InputDialog = %s; for next time, saved in cell {%s}." % (Waveguide_Type, cell.name) )
+    cell.set_property("Waveguide_Type", Waveguide_Type)
+    lv.commit()
 
 # Configure the library to use for the waveguide type.
 if Waveguide_Type == "ROUND_PATH":
   Waveguide_Lib = "Basic"
 elif Waveguide_Type == "Waveguide_Route":
-  Waveguide_Lib = "SiEPIC"
+  Waveguide_Lib = "SiEPIC-EBeam PCells"
 
 
 # Waveguide radius should be specified in the cell in which the Path_to_Waveguide is called
@@ -124,9 +148,11 @@ else:
   if radius == None:
     radius = 10
   else:
+    lv.transaction("Path to Waveguide: waveguide radius selection")
     print("Radius taken from the InputDialog = %s; for next time, saved in cell {%s}." % (radius, cell.name) )
     cell.set_property("radius", str(radius))
-      
+    lv.commit()
+
 # How close must a waveguide be to a pin for it to snap:
 waveguide_snap_dist = 10
 
@@ -164,6 +190,13 @@ if object_selection == []:
   lv.object_selection = object_selection
 
 
+# Search the layout for the components:
+print("* calling find_all_components() - DevRec")
+find_all_components(cell, LayerDevRecN, LayerPinRecN, LayerFbrTgtN)
+
+OKa = -1 # for manhattan check
+OKb = -1 # for radius check
+
 for o in object_selection:
   if o.is_cell_inst():
     print("Selected object is a cell, rather than a path.  Please select a path.")
@@ -179,29 +212,56 @@ for o in object_selection:
       else:
         # this is a path.
         
-        # Search the layout for the components and waveguides:
-        print("* calling find_all_components() – DevRec")
-        find_all_components(cell, LayerDevRecN, LayerPinRecN, LayerFbrTgtN)
         shape_obj = o.shape
         path_obj = o.shape.path
         num_points = path_obj.num_points()
         points = path_to_points(path_obj)
-        if num_points == 2:
-          # insert two mid-points in the path so that:
-          #  1) it can later be split into two nets
-          #  2) to allow for waveguide snapping, move an edge, not just endpoint.
-          a1 = []
-          count =0
-          for p in points:
-            a1.append (pya.Point(p[0], p[1]))
-            count += 1
-            if count == 1:
-              # add a point:
-              a1.append( pya.Point( (points[0][0] + points[1][0])/2, (points[0][1] + points[1][1])/2 )  )
-              a1.append( pya.Point( (points[0][0] + points[1][0])/2, (points[0][1] + points[1][1])/2 )  )
-          # Update the path
-          path_obj = pya.Path(a1, path_obj.width)
-          print("updated path (inserted mid-point): %s" % path_obj )
+        
+        ####Check if the first and last segments are manhattan
+        ##if yes then keep OK = -1
+        ##if not then keep it 0
+        if OKa == -1:
+          if len(points) == 2:
+            manhattan_check = ["checked"]
+          else:
+            manhattan_check = []
+          for i in range(len(points)):
+            if(i==1 or points[i] == points[-1]):
+             if(points[i][0] == points[i-1][0] or points[i][1] == points[i-1][1]):
+              manhattan_check.append("checked")
+          #if there are two checks in list then it passed the test
+          if(len(manhattan_check)==2):
+            None
+          else:
+            warning_window = pya.QMessageBox()
+            warning_window.setText("Warning: Waveguide segments (first, last) are not Manhattan (vertical, horizontal).")
+            warning_window.setInformativeText("Do you want to Proceed?")
+            warning_window.setStandardButtons(pya.QMessageBox.Yes | pya.QMessageBox.Cancel);
+            warning_window.setDefaultButton(pya.QMessageBox.Yes)
+            response = warning_window.exec_()        
+            if(response == pya.QMessageBox.Cancel):
+              OKa = 0
+              break
+            else:
+              OKa = 1
+
+        #Checks if any segment is less than the radius value
+        # only do this the first time (OK not pushed yet)
+        if OKb == -1:
+          segment_length = [sqrt((points[i][0]- points[i-1][0])**2 + (points[i][1] - points[i-1][1])**2) for i in range(len(points)) if i&gt;0]
+          if(all( (each &gt;= radius/dbu) or (each == 0) for each in segment_length) == False):
+            warning_window = pya.QMessageBox()
+            warning_window.setText("Warning: One of the waveguide segments has insufficient length to accommodate the desired bend radius.")
+            warning_window.setInformativeText("Do you want to Proceed?")
+            warning_window.setStandardButtons(pya.QMessageBox.Yes | pya.QMessageBox.Cancel);
+            warning_window.setDefaultButton(pya.QMessageBox.Yes)
+            response = warning_window.exec_()        
+            if(response == pya.QMessageBox.Cancel):
+              OKb = 0
+              break
+            else:
+              OKb = 1
+        
         # Waveguide parameters
         wg_type = 0
         bend_pts = 0
@@ -212,13 +272,30 @@ for o in object_selection:
         # For both the beginning and end of the path:
         for pin in optical_pins:
           pin.dist = []
-        for path_endpoint in [ points[0], points[len(points)-1] ]:
-          # Calculate the distnace between every pin and each path endpoint
+        for wg_beginning_end in [ 0, 1 ]:
+          # check both the beginning and end of the waveguide.
+          if wg_beginning_end == 0:
+            path_endpoint = points[0]
+            path_endpointb = points[1]
+          else:
+            path_endpoint = points[len(points)-1]
+            path_endpointb = points[len(points)-2]
+          # Calculate the distance between every pin and each path endpoint
           for pin in optical_pins:
-            # this updates "optical_pins" via the "pin" pointer  
-            # print( "path endpoint: %s, pin %s: %s" % (path_endpoint, pin.n, [pin.x, pin.y] ) )
-            pin.dist.append ( distance_xy ( path_endpoint, [pin.x, pin.y] ) ) 
-          # Find the closest pin for each path endpoint
+            # check if pin / path segment are in the same orientation
+            if pin.pin_type==1: # only snap to component pins.
+              angle_pin_path = angle_segments(pin.points,[path_endpoint, path_endpointb])
+            else:
+              angle_pin_path = -1
+            if angle_pin_path == 0 or abs(angle_pin_path) == 180:
+              # this updates "optical_pins" via the "pin" pointer  
+              # print( "path endpoint: %s, pin %s: %s" % (path_endpoint, pin.n, [pin.x, pin.y] ) )
+              pin.dist.append ( distance_xy ( path_endpoint, [pin.x, pin.y] ) ) 
+            else:
+              # if this pin isn't in the correct direction, mark it as infinitely far away.
+              pin.dist.append ( 1e9 ) 
+
+        # Find the closest pin for each path endpoint
         # optical_pins_sorted0[0].dist[0] is the pin distance data sorted in relation to the waveguide beginning:
         optical_pins_sorted0 = sorted(optical_pins, key=lambda  optical_pins0: optical_pins0.dist[0])
         # optical_pins_sorted1[0].dist[1] is the pin distance data sorted in relation to the waveguide end:
@@ -235,6 +312,24 @@ for o in object_selection:
             else:
               # End is closest, don't touch the beginning
               go_wg_beginning = False
+          dx = optical_pins_sorted0[0].x - optical_pins_sorted1[0].x
+          dy = optical_pins_sorted0[0].y - optical_pins_sorted1[0].y
+          if (num_points == 2) &amp; ( (dx != 0) and (dy != 0) ) :
+            # insert two mid-points in the path so that:
+            #  - to allow for waveguide snapping, move an edge, not just endpoint.
+            print("ORIGINAL PTS",points)
+            a1 = []
+            count =0
+            for p in points:
+              a1.append (pya.Point(p[0], p[1]))
+              count += 1
+              if count == 1:
+                # add a point:
+                a1.append( pya.Point( (points[0][0] + points[1][0])/2, (points[0][1] + points[1][1])/2 )  )
+                a1.append( pya.Point( (points[0][0] + points[1][0])/2, (points[0][1] + points[1][1])/2 )  )
+            # Update the path
+            path_obj = pya.Path(a1, path_obj.width)
+            print("updated path (inserted mid-point): %s" % path_obj )              
           if optical_pins_sorted0[0].dist[0] &lt; waveguide_snap_dist and go_wg_beginning:
             # Update the path beginning endpoint to match pin
             points = path_to_points(path_obj)
@@ -254,6 +349,9 @@ for o in object_selection:
             print("updated path (adjusted beginning point): %s" % path_obj )
           optical_pins_sorted1[0] # pin that is closest to the end of path
           if optical_pins_sorted1[0].dist[1] &lt; waveguide_snap_dist and go_wg_end:
+            # add check for angle of pins.
+            # xxxxx
+            
             # Update the path end endpoint to match pin
             points = path_to_points(path_obj)
             # Is this a horizontal or vertical segment; move the whole segment
@@ -270,6 +368,11 @@ for o in object_selection:
             # Update the path in the layout
             path_obj = pya.Path(a1, path_obj.width)
             print("updated path (adjusted end point): %s" % path_obj )
+
+        # only do this for the first waveguide
+        if to_delete == []:
+          # Record a transaction, to enable "undo"
+          lv.transaction("Path to Waveguide")
 
         # Convert the path to a waveguide
         wg_path = points_to_Dpath( points_mult(path_to_points(path_obj),dbu), wg_width)
@@ -288,25 +391,25 @@ for o in object_selection:
         # Mark the path for deletion:
         to_delete.append(shape_obj)  
 
+
 n_deleted = len(to_delete)
-for t in to_delete:
-  t.delete()
-        
-# Clear the layout view selection, since we deleted some objects (but others may be selected still):
-lv.clear_object_selection()
-
-# Select the newly added objects
-lv.object_selection = new_selection
-
-# Record a transaction, to enable "undo"
-lv.commit()
-
 
 if n_deleted == 0:
-  v = pya.MessageBox.warning("No path selected", "No path selected.\nPlease select a path. \nIt will get converted to a waveguide.", pya.MessageBox.Ok)
+  if (OKa != 0) &amp; (OKb != 0):
+    v = pya.MessageBox.warning("No path selected", "No path selected.\nPlease select a path. \nIt will get converted to a waveguide.", pya.MessageBox.Ok)
+else:
 
-# Save the optical_waveguides for future heal operations
-#optical_waveguides_registered = [] # check if this exists...
-#optical_waveguides_registered.append(optical_waveguides)
+  for t in to_delete:
+    t.delete()
+        
+  # Clear the layout view selection, since we deleted some objects (but others may be selected still):
+  lv.clear_object_selection()
+
+  # Select the newly added objects
+  lv.object_selection = new_selection
+
+  # Record a transaction, to enable "undo"
+  lv.commit()
+
 </text>
 </klayout-macro>

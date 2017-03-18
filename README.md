@@ -1,44 +1,69 @@
 # SiEPIC_EBeam_PDK
 
-- <a href="www.siepic.ubc.ca">SiEPIC</a> EBeam PDK, Library - for silicon photonics layout, design and verification
-- by Lukas Chrostowski, (c) 2015-2016
+- <a href="www.siepic.ubc.ca">SiEPIC</a> EBeam PDK, Library - for silicon photonics layout, design, verification and circuit simulation
+- by <a href="https://ca.linkedin.com/in/chrostowski">Lukas Chrostowski</a>, (c) 2015-2016, with contributions by: <a href="https://ca.linkedin.com/in/zeqin-lu-13a52394">Zeqin Lu</a>, <a href="https://uk.linkedin.com/in/jaspreet-jhoja-00a56b64">Jaspreet Jhoja</a>, <a href="https://ca.linkedin.com/in/121comeon">Xu Wang</a>, <a href="https://ca.linkedin.com/in/jonas-flückiger-92a4831">Jonas Flueckiger</a>.
 - Package for KLayout, klayout.de (developed on KLayout version 0.24.3, OSX)
 - Instruction on design, layout, fabrication, test, data analysis for silicon photonics provided in the edX course: <a href="http://edx.org/course/silicon-photonics-design-fabrication-ubcx-phot1x">Silicon Photonics Design, Fabrication and Data Analysis</a> and textbook <a href="http://www.cambridge.org/ca/academic/subjects/engineering/electronic-optoelectronic-devices-and-nanotechnology/silicon-photonics-design-devices-systems">Silicon Photonics Design: From Devices to Systems</a> by Lukas Chrostowski and Michael Hochberg.
 - Fabrication runs via Electron Beam Lithography are available, including <a href="https://www.linkedin.com/pulse/openebl-fabrication-test-passive-silicon-photonic-lukas-chrostowski">openEBL</a> fabrication.
- 
+- Citing this work:  Lukas Chrostowski, Zeqin Lu, Jonas Flueckiger, Xu Wang, Jackson Klein, Amy Liu, Jaspreet Jhoja, James Pond,
+"<a href="http://mina.ubc.ca/ref_design-and-simulation-sili">Design and simulation of silicon photonic schematics and layouts</a>," Proc. SPIE 9891, Silicon Photonics and Photonic Integrated Circuits V, 989114 (May 13, 2016); doi:10.1117/12.2230376.
+
+##Download and Installation instructions:
+ - <a href="https://github.com/lukasc-ubc/SiEPIC_EBeam_PDK/wiki/Installation-instructions">SiEPIC_EBeam_PDK download and installation instructions</a> on the wiki page.  
+
  
 ##Objectives:
  - Use an open-source layout tool (KLayout) to implement a sophisticated layout design environment for silicon photonics
  - Support for both GUI and script-based layout, or combinations of both.
+ - KLayout-INTERCONNECT integration offers a layout-first design methodology. Inspired by Layout Versus Schematic tools, this PDK includes netlist extraction routines to generate a schematic from the layout. This allows the user to directly simulate from the layout, without needing to create the schematic first. This approach is possibly more appealing to photonics designers who are accustomed to designing physical layouts, rather than schematics. A library of components (layout and compact models) is included in the Process Design Kit, specifically for silicon photonics fabrication via Electron Beam Lithography.
  - Whereas a typical schematic-driven design flow includes a schematic, circuit simulation, layout, and verification (see Chapter 10 of the <a href="http://www.cambridge.org/ca/academic/subjects/engineering/electronic-optoelectronic-devices-and-nanotechnology/silicon-photonics-design-devices-systems">textbook</a>), the approach taken here is <b>Layout-driven</b>, followed by verification, then a schematic (via a netlist extraction) and simulations.
+ - Read more details in our two SPIE papers: <a href="http://mina.ubc.ca/ref_design-and-simulation-sili">Design and simulation of silicon photonic schematics and layouts</a> and <a href="http://mina.ubc.ca/ref_schematic-driven-silicon-p">Schematic Driven Silicon Photonics Design</a>.
 
-[![Demo video](http://img.youtube.com/vi/FRmkGjVUIH4/0.jpg)](http://www.youtube.com/watch?v=FRmkGjVUIH4)
+
+Video of a layout and simulation of a ring resonator circuit:
+
+[![Layout and simulation of a ring resonator circuit](http://img.youtube.com/vi/1E47VP6Fod0/0.jpg)](https://www.youtube.com/watch?v=1E47VP6Fod0)
+
+Monte Carlo simulations of a ring resonator circuit, showing fabrication variations:
+
+[![Monte Carlo simulations of a ring resonator circuit](http://img.youtube.com/vi/gUiBsVRlzPE/0.jpg)](https://www.youtube.com/watch?v=gUiBsVRlzPE)
+
+Layout of a Mach-Zehnder Interferometer:
+
+[![Layout of a Mach-Zehnder Interferometer](http://img.youtube.com/vi/FRmkGjVUIH4/0.jpg)](http://www.youtube.com/watch?v=FRmkGjVUIH4)
+
+Simulations for the MZI:
+
 [![Lumerical INTERCONNECT simulations](http://img.youtube.com/vi/1bVO4bpiO58/0.jpg)](http://www.youtube.com/watch?v=1bVO4bpiO58)
+
 
 
 ##Package includes:
 
 - Process Design Kit (PDK): this package, including fabrication documentation, scripts, etc.
-- PCells: ring resonator; PCell test structure layout with grating couplers and instantiating the ring resonator PCell.
-- Script / Macro to create a layout, including waveguide generation functions.
+- EBeam Layer definitions for KLayout (klayout_Layers_EBeam.lyp).
+- PCells: directional couplers, ring resonator, taper, Bragg grating
+- Sample scripts to create a layout, including waveguide generation functions: Mach-Zehnder Interferometer test structures; Ring resonator test structure.
 - GDS Library, updated with marker layers for verification/netlist generation.
 - Verification: 
  - Scanning the layout. Finding waveguides, devices, pins.  
  - Verification: Identifying if there are missing connections, mismatched waveguides, too few points in a bend, etc. 
  - Example layouts using the library for verification (EBeam_LukasChrostowski_E_LVS.gds, SiEPIC_EBeam_PDK_Verification_Check.gds).
+ - Verification for automated measurements
 - Circuit simulations:
  - Netlist generation
  - Creating a Spice netlist suitable for for circuit simulations. This includes extracting the waveguide length (wg_length) for all waveguides.
  - Menu item "Lumerical INTERCONNECT" will automatically: generate the netlist, launch Lumerical INTERCONNECT to perform the circuit simulations, and pop-up a plot of the transmission spectrum.
+ - Monte Carlo simulations, including waveguides, ring resonators built using directional couplers, y-branches, grating couplers.
 - Waveguide functionality: 
- - Menu item "W": selected paths are first snapped to the nearest pins, then converted to waveguides.
- - Menu item "Shift-W": selected waveguides are converted back to paths.
-- EBeam Layer definitions for KLayout (klayout_Layers_EBeam.lyp).
-- Monte Carlo simulations of waveguides.
+ - Hot Key "W": selected paths are first snapped to the nearest pins, then converted to waveguides.
+ - Hot Key "Shift-W": selected waveguides are converted back to paths.
+ - Hot Key "Ctrl-Shift-W": measure the length of the selected waveguides.
+ - Hot Key "Ctrl-Shift-R": resize the waveguides, for a given target length.
+- Layout object snapping
+ - Hot Key "Shift-O": Snaps the selected object to the one where the mouse is hovering over.
 
 
-##Download and Installation instructions:
- - <a href="https://github.com/lukasc-ubc/SiEPIC_EBeam_PDK/wiki/Installation-instructions">SiEPIC_EBeam_PDK download and installation instructions</a> on the wiki page.  
 
 
 ##Contributing to this project:
